@@ -5,15 +5,9 @@ import telebot
 import yt_dlp
 from fastapi import FastAPI, Request
 
-# ================= CONFIG =================
-BOT_TOKEN = os.getenv("7907868252:AAF15geicSBKFaFRpR7uLS5dCClI7SrPuak")
-WEBHOOK_URL = os.getenv("https://bot-kwai-tiktok.onrender.com")
-
-if not BOT_TOKEN or not WEBHOOK_URL:
-    raise RuntimeError("BOT_TOKEN ou WEBHOOK_URL não definido")
-
-bot = telebot.TeleBot(BOT_TOKEN, threaded=True)
+# ================= APP =================
 app = FastAPI()
+bot = None
 
 DOWNLOAD_DIR = "downloads"
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
@@ -90,68 +84,73 @@ def baixar_video(url, chat_id, msg_id):
         return None
 
 # ================= BOT COMMANDS =================
-@bot.message_handler(commands=["start"])
-def start(msg):
-    bot.reply_to(
-        msg,
-        "📥 *Downloader TikTok / Kwai*\n\n"
-        "Use:\n"
-        "`/download LINK_DO_VIDEO`",
-        parse_mode="Markdown"
-    )
+def register_handlers(bot: telebot.TeleBot):
 
+    @bot.message_handler(commands=["start"])
+    def start(msg):
+        bot.reply_to(
+            msg,
+            "📥 *Downloader TikTok / Kwai*\n\n"
+            "Use:\n"
+            "`/download LINK_DO_VIDEO`",
+            parse_mode="Markdown"
+        )
 
-@bot.message_handler(commands=["download"])
-def download(msg):
-    status = None
-    video_path = None
+    @bot.message_handler(commands=["download"])
+    def download(msg):
+        status = None
+        video_path = None
 
-    try:
-        parts = msg.text.split(maxsplit=1)
-        if len(parts) < 2:
-            bot.reply_to(msg, "❌ Envie o link.")
-            return
+        try:
+            parts = msg.text.split(maxsplit=1)
+            if len(parts) < 2:
+                bot.reply_to(msg, "❌ Envie o link.")
+                return
 
-        url = parts[1].strip()
-        if not is_valid_url(url):
-            bot.reply_to(msg, "❌ Link inválido.")
-            return
+            url = parts[1].strip()
+            if not is_valid_url(url):
+                bot.reply_to(msg, "❌ Link inválido.")
+                return
 
-        status = bot.reply_to(msg, "⏳ Iniciando download...")
+            status = bot.reply_to(msg, "⏳ Iniciando download...")
 
-        video_path = baixar_video(url, msg.chat.id, status.message_id)
-
-        if not video_path:
-            bot.edit_message_text(
-                "❌ Falha ao baixar o vídeo.",
+            video_path = baixar_video(
+                url,
                 msg.chat.id,
                 status.message_id
             )
-            return
 
-        with open(video_path, "rb") as video:
-            bot.send_video(
-                msg.chat.id,
-                video,
-                supports_streaming=True,
-                timeout=180
-            )
+            if not video_path:
+                bot.edit_message_text(
+                    "❌ Falha ao baixar o vídeo.",
+                    msg.chat.id,
+                    status.message_id
+                )
+                return
 
-    except Exception as e:
-        bot.reply_to(msg, f"❌ Erro:\n{e}")
+            with open(video_path, "rb") as video:
+                bot.send_video(
+                    msg.chat.id,
+                    video,
+                    supports_streaming=True,
+                    timeout=180
+                )
 
-    finally:
-        try:
-            if status:
-                bot.delete_message(msg.chat.id, status.message_id)
-        except:
-            pass
+        except Exception as e:
+            bot.reply_to(msg, f"❌ Erro:\n{e}")
 
-        try:
-            if video_path and os.path.exists(video_path):
-                os.remove(video_path)
-        except:
-            pass
+        finally:
+            try:
+                if status:
+                    bot.delete_message(msg.chat.id, status.message_id)
+            except:
+                pass
+
+            try:
+                if video_path and os.path.exists(video_path):
+                    os.remove(video_path)
+            except:
+                pass
 
 # ================= WEBHOOK =================
 @app.post("/webhook")
@@ -161,13 +160,27 @@ async def webhook(req: Request):
     bot.process_new_updates([update])
     return {"ok": True}
 
-
+# ================= STARTUP / SHUTDOWN =================
 @app.on_event("startup")
 def on_startup():
+    global bot
+
+    BOT_TOKEN = os.getenv("BOT_TOKEN")
+    WEBHOOK_URL = os.getenv("WEBHOOK_URL")
+
+    if not BOT_TOKEN or not WEBHOOK_URL:
+        raise RuntimeError("BOT_TOKEN ou WEBHOOK_URL não definido")
+
+    bot = telebot.TeleBot(BOT_TOKEN, threaded=True)
+    register_handlers(bot)
+
     bot.remove_webhook()
     bot.set_webhook(url=f"{WEBHOOK_URL}/webhook")
-    print("Webhook ativo")
+
+    print("✅ Bot iniciado e webhook configurado")
+
 
 @app.on_event("shutdown")
 def on_shutdown():
-    bot.remove_webhook()
+    if bot:
+        bot.remove_webhook()
