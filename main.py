@@ -7,7 +7,7 @@ from fastapi import FastAPI, Request
 
 # ================= CONFIG =================
 BOT_TOKEN = os.getenv("7907868252:AAF15geicSBKFaFRpR7uLS5dCClI7SrPuak")
-WEBHOOK_URL = os.getenv("WEBHOOK_URL")
+WEBHOOK_URL = os.getenv("https://bot-kwai-tiktok.onrender.com")
 
 if not BOT_TOKEN or not WEBHOOK_URL:
     raise RuntimeError("BOT_TOKEN ou WEBHOOK_URL não definido")
